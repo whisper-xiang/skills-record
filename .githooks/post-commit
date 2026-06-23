@@ -1,35 +1,5 @@
 #!/usr/bin/env bash
-# 提交后自动更新项目根目录 README.md（技能总索引）
-set -euo pipefail
-
-ROOT="$(git rev-parse --show-toplevel)"
-cd "$ROOT"
-
-# 防止自动提交索引时再次触发钩子造成循环
-if [[ "${SKIP_SKILLS_README_HOOK:-}" == "1" ]]; then
-  exit 0
-fi
-
-# 索引更新提交不再触发
-if git log -1 --pretty=%s | grep -qE '^chore\(readme\): 自动更新技能索引'; then
-  exit 0
-fi
-
-if ! command -v python3 >/dev/null 2>&1; then
-  echo "[skills-readme] python3 not found, skip" >&2
-  exit 0
-fi
-
-python3 scripts/generate-skills-readme.py || {
-  echo "[skills-readme] generate failed" >&2
-  exit 0
-}
-
-if git diff --quiet README.md 2>/dev/null; then
-  exit 0
-fi
-
-git add README.md
-SKIP_SKILLS_README_HOOK=1 git commit -m "chore(readme): 自动更新技能索引" --no-verify
-
-echo "[skills-readme] README.md updated and committed"
+# README.md 由 GitHub Actions 维护（见 .github/workflows/update-skills-readme.yml）。
+# 本地 commit 后请 push，再 git pull 获取 CI 生成的索引更新。
+# 本地预览：python3 scripts/generate-skills-readme.py
+exit 0
