@@ -10,6 +10,11 @@ on:
   issues:
     types: [opened, edited, labeled, unlabeled, reopened]
 
+# 串行执行，避免多个 run 同时 push README 互相顶掉
+concurrency:
+  group: update-skills-readme
+  cancel-in-progress: false
+
 permissions:
   contents: write
   issues: read
@@ -23,20 +28,42 @@ jobs:
       (github.event_name == 'issues' && contains(github.event.issue.labels.*.name, 'skill-record'))
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
 
-      - name: Generate README.md
+      - name: Generate and push README.md
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: python3 scripts/generate-skills-readme.py
-
-      - name: Commit if changed
         run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          git pull --rebase origin main
+          python3 scripts/generate-skills-readme.py
+
           if git diff --quiet README.md; then
             echo "README.md already up to date"
             exit 0
           fi
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
+
           git add README.md
           git commit -m "chore(readme): 自动更新技能索引"
-          git push
+
+          for attempt in 1 2 3 4 5; do
+            if git push origin HEAD:main; then
+              echo "Pushed on attempt $attempt"
+              exit 0
+            fi
+            echo "Push rejected (attempt $attempt), rebasing and retrying..."
+            git pull --rebase origin main
+            python3 scripts/generate-skills-readme.py
+            git add README.md
+            if ! git diff --cached --quiet; then
+              git commit -m "chore(readme): 自动更新技能索引"
+            fi
+            sleep 2
+          done
+
+          echo "Failed to push README update after 5 attempts" >&2
+          exit 1
