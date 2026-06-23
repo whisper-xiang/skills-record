@@ -1,6 +1,6 @@
 # Skills Record — 技能记录库
 
-> 最后更新：2026-06-23 15:18 
+> 最后更新：2026-06-23 17:15 
 
 收录 Cursor / Claude Agent Skill 与相关工具。技能可来自 **`skills/` 目录**（各子目录含 `SKILL.md`）或 **GitHub Issues**（标签 `skill-record`）。
 
@@ -23,6 +23,7 @@
 <tr><td><a href="#academic-research-skills">Academic Research Skills (ARS)</a></td><td>33.7k</td><td>Claude Skill</td><td>收藏</td><td>Claude Code 学术研究全流程技能套件，覆盖研究、写作、审稿与 10 阶段 pipel…</td></tr>
 <tr><td><a href="#cnki">CNKI Research Toolkit</a></td><td>—</td><td>Cursor Skill</td><td>—</td><td>面向 Cursor / Claude Agent 的 中国知网（CNKI）文献研究 Skill…</td></tr>
 <tr><td><a href="#nature-skills">nature-skills</a></td><td>22.3k</td><td>其他</td><td>收藏</td><td>Nature/CNS 风格科研技能包，含润色、绘图、reader、PPT、审稿、引用等 11 …</td></tr>
+<tr><td><a href="#thesis-tutor">Thesis Tutor</a></td><td>0</td><td>Cursor Skill</td><td>收藏</td><td>基于本地 Markdown 知识库的多语言论文全流程辅导 Skill，本地零成本引擎 + De…</td></tr>
 </tbody>
 </table>
 
@@ -183,3 +184,52 @@ Nature style 润色这段学术文本。
 - **姊妹/参考**：DeepMind [Science-skills](https://github.com/google-deepmind/science-skills)（若存在）
 - **与 ARS 对比**：nature-skills 聚焦 Nature/CNS 风格表达与绘图；academic-research-skills 覆盖更完整 pipeline。可互补使用
 - **待尝试**：在 Cursor 中手动部署 `nature-reader` 或 `nature-figure`
+
+---
+
+<a id="thesis-tutor"></a>
+
+### Thesis Tutor
+
+**分类** Cursor Skill · **Stars** 0 · **状态** 收藏 · **标签** 论文, 学术写作, 多语言, 开题, 答辩, DeepSeek, Python · **仓库** [https://gitee.com/xiaoruoyu1206/thesis-tutor](https://gitee.com/xiaoruoyu1206/thesis-tutor) · **Issue** [#6](https://github.com/whisper-xiang/skills-record/issues/6)
+
+#### 简介
+
+Thesis Tutor（v4.1.0）是一款智能论文辅导系统，帮助学生从选题到定稿的全流程写作。支持 7 种语言、15 个学科、190+ 知识文档；采用正则意图匹配 + 本地 Markdown 知识库实现零成本快速响应，可选配置 DeepSeek API Key 启用 AI 深度分析。
+
+#### 使用方法
+
+**触发场景**：论文选题、开题报告、文献综述、研究方法、各章节写作、格式引用、修改润色、降重、学术英语、答辩准备等；支持中/英/日/韩/法/德/西 7 种语言。
+
+**典型流程**：
+
+1. 将仓库克隆到 Cursor skills 目录（或引用 `SKILL.md`）
+2. 直接提问论文相关问题，系统自动识别意图（选题、大纲、开题、写作、修改、答辩等 15+ 类）
+3. 可选：`Configure API Key: <YOUR_API_KEY>` 启用 DeepSeek 深度分析
+4. 可选：`Switch language to English` 或说明专业领域切换学科上下文
+
+**示例提示词**：
+
+```
+如何选择一个好的论文题目？
+开题报告怎么写？
+如何降低查重率？
+Switch language to English
+我的专业是计算机科学
+```
+
+**内置命令**：
+
+| 命令 | 功能 |
+|------|------|
+| `Configure API Key: <KEY>` | 设置 DeepSeek API Key |
+| `Remove API Key` | 移除 API Key |
+| `Check API Status` | 检查 API 连接 |
+| `Switch language to xx` | 切换语言 |
+| `Help` | 显示帮助 |
+
+#### 使用效果
+
+- 本地引擎可离线使用；AI 引擎需 DeepSeek API Key 与网络
+- Gitee 仓库当前 0 Star；MIT License
+- 与 `thesis-defense-pptx`（答辩 PPT 生成）、`Academic Research Skills`（Claude 学术研究全流程）互补：本 Skill 侧重选题到定稿的辅导问答与本地知识库
