@@ -41,6 +41,21 @@ class SkillEntry:
     stars: str = ""
     repo_url: str = ""
     issue_number: int | None = None
+    detail_sections: dict[str, str] = field(default_factory=dict)
+
+# 详情区展示的章节（不含安装、更新日志等）
+DETAIL_SECTION_MAP: dict[str, list[str]] = {
+    "简介": ["简介"],
+    "使用方法": ["用法", "使用方式", "使用方法"],
+    "使用效果": ["备注", "使用效果", "效果", "功能概览"],
+}
+
+SKIP_SECTION_RE = re.compile(
+    r"安装|更新日志|^链接$|目录结构|DOM|选择器|模块详解|维护脚本|如何新增|架构图",
+    re.IGNORECASE,
+)
+
+TABLE_SUMMARY_MAX = 48
 
 
 def parse_frontmatter(text: str) -> dict[str, str]:
@@ -78,11 +93,19 @@ def extract_summary(readme_path: Path, description: str, max_len: int = 200) -> 
 
 def parse_record_frontmatter(body: str) -> dict[str, str]:
     """解析 Issue 正文或 records 风格 YAML frontmatter。"""
+    # Issue 展示格式：摘要表 + ```yaml 代码块
+    fence = re.search(r"```yaml\s*\n(.*?)\n```", body, re.DOTALL)
+    if fence:
+        return _parse_yaml_block(fence.group(1))
     match = re.match(r"^---\s*\n(.*?)\n---", body, re.DOTALL)
     if not match:
         return {}
+    return _parse_yaml_block(match.group(1))
+
+
+def _parse_yaml_block(block: str) -> dict[str, str]:
     data: dict[str, str] = {}
-    for line in match.group(1).splitlines():
+    for line in block.splitlines():
         if ":" not in line:
             continue
         key, _, value = line.partition(":")
@@ -112,14 +135,19 @@ def scan_local_skills() -> dict[str, SkillEntry]:
         description = meta.get("description", "")
         rel = f"skills/{child.name}"
 
+        summary = extract_summary(readme, description)
+        detail_src = readme if readme.is_file() else skill_md
         skills[slug] = SkillEntry(
             slug=slug,
             name=name,
-            description=extract_summary(readme, description),
+            description=summary,
             source="local",
             detail_path=f"{rel}/README.md" if readme.is_file() else f"{rel}/SKILL.md",
             category=meta.get("category", "cursor-skill"),
             tags=[t.strip() for t in meta.get("tags", "").split(",") if t.strip()],
+            detail_sections=extract_detail_sections(
+                detail_src.read_text(encoding="utf-8"), summary
+            ),
         )
     return skills
 
@@ -178,10 +206,11 @@ def fetch_issue_skills() -> dict[str, SkillEntry]:
         slug = meta.get("slug") or slug_from_dir(display)
         number = item["number"]
 
+        summary = meta.get("summary") or extract_summary(Path(), meta.get("description", ""))
         skills[slug] = SkillEntry(
             slug=slug,
             name=meta.get("title", display),
-            description=meta.get("summary") or extract_summary(Path(), meta.get("description", "")),
+            description=summary,
             source="issue",
             detail_path=f"https://github.com/{_github_repo()}/issues/{number}",
             category=meta.get("category", ""),
@@ -190,6 +219,7 @@ def fetch_issue_skills() -> dict[str, SkillEntry]:
             repo_url=meta.get("repo_url", ""),
             issue_number=number,
             tags=[t.strip() for t in meta.get("tags", "").split(",") if t.strip()],
+            detail_sections=extract_detail_sections(body, summary),
         )
     return skills
 
@@ -251,10 +281,179 @@ def category_label(cat: str) -> str:
     return mapping.get(cat, cat or "—")
 
 
-def source_label(entry: SkillEntry) -> str:
-    if entry.source == "local":
-        return f"本地 `skills/{entry.slug}/`"
-    return f"Issue #{entry.issue_number}"
+def clean_record_body(text: str) -> str:
+    """去掉 frontmatter、摘要表、YAML 代码块与一级标题，保留正文章节。"""
+    text = text.strip()
+    text = re.sub(r"^---\s*\n.*?\n---\s*\n", "", text, flags=re.DOTALL)
+    text = re.sub(r"^```yaml\s*\n.*?\n```\s*\n", "", text, count=1, flags=re.DOTALL)
+    lines = text.splitlines()
+    idx = 0
+    while idx < len(lines) and lines[idx].strip().startswith("|"):
+        idx += 1
+    while idx < len(lines) and not lines[idx].strip():
+        idx += 1
+    text = "\n".join(lines[idx:])
+    text = re.sub(r"^# [^\n]+\n+", "", text.strip(), count=1)
+    return text.strip()
+
+
+def split_markdown_sections(text: str) -> tuple[str, list[tuple[str, str]]]:
+    """返回 (前言, [(## 标题, 正文), ...])。"""
+    parts = re.split(r"^## +(.+)$", text, flags=re.MULTILINE)
+    if len(parts) == 1:
+        return parts[0].strip(), []
+    preamble = parts[0].strip()
+    sections: list[tuple[str, str]] = []
+    for i in range(1, len(parts), 2):
+        title = parts[i].strip()
+        body = parts[i + 1].strip() if i + 1 < len(parts) else ""
+        sections.append((title, body))
+    return preamble, sections
+
+
+def should_skip_section(title: str) -> bool:
+    return bool(SKIP_SECTION_RE.search(title))
+
+
+def map_section_key(title: str) -> str | None:
+    for key, aliases in DETAIL_SECTION_MAP.items():
+        if any(alias in title for alias in aliases):
+            return key
+    return None
+
+
+def first_paragraph(text: str) -> str:
+    buf: list[str] = []
+    for line in text.splitlines():
+        s = line.strip()
+        if not s:
+            if buf:
+                break
+            continue
+        if s.startswith("#") or s.startswith("|") or s.startswith("```") or s.startswith("---"):
+            break
+        buf.append(s)
+    return " ".join(buf)
+
+
+def clean_section_body(body: str) -> str:
+    """去掉章节正文中独立的 --- 分隔线。"""
+    lines = [ln for ln in body.splitlines() if ln.strip() != "---"]
+    return "\n".join(lines).strip()
+
+
+def extract_detail_sections(text: str, fallback_summary: str = "") -> dict[str, str]:
+    cleaned = clean_record_body(text)
+    preamble, sections = split_markdown_sections(cleaned)
+    result: dict[str, str] = {}
+
+    for title, body in sections:
+        if should_skip_section(title):
+            continue
+        key = map_section_key(title)
+        body = clean_section_body(body)
+        if not key or not body:
+            continue
+        if key in result:
+            result[key] = f"{result[key]}\n\n{body}"
+        else:
+            result[key] = body
+
+    if "简介" not in result:
+        intro = first_paragraph(preamble) or fallback_summary
+        if intro:
+            result["简介"] = intro
+
+    return result
+
+
+def truncate_cell(text: str, max_len: int = TABLE_SUMMARY_MAX) -> str:
+    one_line = re.sub(r"\s+", " ", text.replace("|", "\\|")).strip()
+    if len(one_line) <= max_len:
+        return one_line
+    return one_line[: max_len - 1] + "…"
+
+
+def escape_html(text: str) -> str:
+    return (
+        text.replace("&", "&amp;")
+        .replace("<", "&lt;")
+        .replace(">", "&gt;")
+        .replace('"', "&quot;")
+    )
+
+
+def render_table_html(skills: list[SkillEntry]) -> str:
+    """HTML 表格以控制列宽；名称列锚点至下方详情。"""
+    rows: list[str] = [
+        "<table>",
+        "<colgroup>",
+        '<col width="18%">',
+        '<col width="8%">',
+        '<col width="12%">',
+        '<col width="8%">',
+        '<col width="54%">',
+        "</colgroup>",
+        "<thead>",
+        "<tr>",
+        "<th>名称</th><th>Stars</th><th>分类</th><th>状态</th><th>简介</th>",
+        "</tr>",
+        "</thead>",
+        "<tbody>",
+    ]
+    if not skills:
+        rows.append(
+            '<tr><td colspan="5"><em>暂无记录</em></td></tr>'
+        )
+    else:
+        for s in skills:
+            name = escape_html(s.name)
+            summary = escape_html(truncate_cell(s.description))
+            rows.append(
+                "<tr>"
+                f'<td><a href="#{s.slug}">{name}</a></td>'
+                f"<td>{escape_html(format_stars(s.stars))}</td>"
+                f"<td>{escape_html(category_label(s.category))}</td>"
+                f"<td>{escape_html(status_label(s.status))}</td>"
+                f"<td>{summary}</td>"
+                "</tr>"
+            )
+    rows.extend(["</tbody>", "</table>"])
+    return "\n".join(rows)
+
+
+def render_skill_details(skills: list[SkillEntry]) -> list[str]:
+    lines = ["## 技能详情", ""]
+    for i, s in enumerate(skills):
+        lines.append(f'<a id="{s.slug}"></a>')
+        lines.append("")
+        lines.append(f"### {s.name}")
+        lines.append("")
+
+        meta: list[str] = [f"**分类** {category_label(s.category)}"]
+        if s.stars:
+            meta.append(f"**Stars** {format_stars(s.stars)}")
+        if s.status:
+            meta.append(f"**状态** {status_label(s.status)}")
+        if s.tags:
+            meta.append(f"**标签** {', '.join(s.tags)}")
+        if s.repo_url:
+            meta.append(f"**仓库** [{s.repo_url}]({s.repo_url})")
+        if s.source == "local":
+            meta.append(f"**文档** [{s.detail_path}]({s.detail_path})")
+        else:
+            meta.append(f"**Issue** [#{s.issue_number}]({s.detail_path})")
+        lines.append(" · ".join(meta))
+        lines.append("")
+
+        for key in DETAIL_SECTION_MAP:
+            content = s.detail_sections.get(key, "").strip()
+            if content:
+                lines.extend([f"#### {key}", "", content, ""])
+
+        if i < len(skills) - 1:
+            lines.extend(["---", ""])
+    return lines
 
 
 def render_readme(skills: list[SkillEntry], issue_count: int) -> str:
@@ -268,22 +467,12 @@ def render_readme(skills: list[SkillEntry], issue_count: int) -> str:
         "",
         "## 技能目录",
         "",
-        "| 名称 | Stars | 分类 | 简介 | 状态 | 来源 | 详情 |",
-        "|------|-------|------|------|------|------|------|",
+        render_table_html(skills),
+        "",
     ]
 
-    if not skills:
-        lines.append("| _暂无记录_ | — | — | — | — | — | — |")
-    else:
-        for s in skills:
-            if s.source == "local":
-                link = f"[README]({s.detail_path})"
-            else:
-                link = f"[Issue #{s.issue_number}]({s.detail_path})"
-            desc = s.description.replace("|", "\\|")
-            lines.append(
-                f"| {s.name} | {format_stars(s.stars)} | {category_label(s.category)} | {desc} | {status_label(s.status)} | {source_label(s)} | {link} |"
-            )
+    if skills:
+        lines.extend(render_skill_details(skills))
 
     if issue_count == 0 and not gh_available():
         lines.extend(
