@@ -1,6 +1,6 @@
 # Skills Record — 技能记录库
 
-> 最后更新：2026-06-23 14:58 
+> 最后更新：2026-06-23 15:18 
 
 收录 Cursor / Claude Agent Skill 与相关工具。技能可来自 **`skills/` 目录**（各子目录含 `SKILL.md`）或 **GitHub Issues**（标签 `skill-record`）。
 
