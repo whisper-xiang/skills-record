@@ -1,0 +1,43 @@
+name: Update Skills README
+
+on:
+  push:
+    branches: [main, master]
+    paths:
+      - "**/SKILL.md"
+      - "**/README.md"
+      - "scripts/generate-skills-readme.py"
+      - ".github/workflows/update-skills-readme.yml"
+  issues:
+    types: [opened, edited, labeled, unlabeled, reopened]
+
+permissions:
+  contents: write
+  issues: read
+
+jobs:
+  update-readme:
+    runs-on: ubuntu-latest
+    # Issue 事件仅处理带 skill-record 标签的
+    if: |
+      github.event_name == 'push' ||
+      (github.event_name == 'issues' && contains(github.event.issue.labels.*.name, 'skill-record'))
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Generate README.md
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: python3 scripts/generate-skills-readme.py
+
+      - name: Commit if changed
+        run: |
+          if git diff --quiet README.md; then
+            echo "README.md already up to date"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add README.md
+          git commit -m "chore(readme): 自动更新技能索引"
+          git push
