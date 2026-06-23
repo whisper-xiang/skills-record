@@ -1,7 +1,7 @@
 # Skills Record — 技能记录库
 
 > 本文件由 `scripts/generate-skills-readme.py` 自动生成，请勿手工编辑。
-> 最后更新：2026-06-23 05:53 UTC
+> 最后更新：2026-06-23 05:54 UTC
 
 收录 Cursor / Claude Agent Skill 与相关工具。技能可来自 **仓库子目录**（含 `SKILL.md`）或 **GitHub Issues**（标签 `skill-record`）。
 
@@ -9,9 +9,22 @@
 
 | 名称 | 分类 | 简介 | 来源 | 详情 |
 |------|------|------|------|------|
+| Academic Research Skills (ARS) | — |  | Issue #1 | [Issue #1](https://github.com/whisper-xiang/skills-record/issues/1) |
 | CNKI Research Toolkit | Cursor Skill | 面向 Cursor / Claude Agent 的 中国知网（CNKI）文献研究 Skill。将原先分散的 10 个子 Skill 合并为单一工作流，通过 Chrome DevTools MCP 在真实浏览器中完成检索、解析、下载、导出与期刊分析。 | 本地 `cnki/` | [README](cnki/README.md) |
 
 ## 各 Skill 简介
+
+### Academic Research Skills (ARS)
+
+- **Slug**：`academic-research-skills--ars`
+- **分类**：—
+- **来源**：Issue #1
+
+_（暂无简介）_
+
+详细内容见 [Issue #1](https://github.com/whisper-xiang/skills-record/issues/1)。
+
+---
 
 ### CNKI Research Toolkit
 
