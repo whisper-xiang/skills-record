@@ -1,7 +1,7 @@
 # Skills Record — 技能记录库
 
 > 本文件由 `scripts/generate-skills-readme.py` 自动生成，请勿手工编辑。
-> 最后更新：2026-06-23 05:56 UTC
+> 最后更新：2026-06-23 13:57 北京时间
 
 收录 Cursor / Claude Agent Skill 与相关工具。技能可来自 **`skills/` 目录**（各子目录含 `SKILL.md`）或 **GitHub Issues**（标签 `skill-record`）。
 

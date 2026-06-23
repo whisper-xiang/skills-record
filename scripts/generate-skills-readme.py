@@ -16,7 +16,8 @@ import re
 import subprocess
 import sys
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import datetime
+from zoneinfo import ZoneInfo
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -232,7 +233,7 @@ def source_label(entry: SkillEntry) -> str:
 
 
 def render_readme(skills: list[SkillEntry], issue_count: int) -> str:
-    now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+    now = datetime.now(ZoneInfo("Asia/Shanghai")).strftime("%Y-%m-%d %H:%M 北京时间")
     lines = [
         "# Skills Record — 技能记录库",
         "",
