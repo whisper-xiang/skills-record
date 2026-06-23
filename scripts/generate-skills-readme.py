@@ -20,6 +20,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
+SKILLS_DIR = REPO_ROOT / "skills"
 OUTPUT = REPO_ROOT / "README.md"
 ISSUE_LABEL = "skill-record"
 ISSUE_TITLE_PREFIX = "[skill]"
@@ -92,10 +93,11 @@ def parse_record_frontmatter(body: str) -> dict[str, str]:
 
 def scan_local_skills() -> dict[str, SkillEntry]:
     skills: dict[str, SkillEntry] = {}
-    skip_dirs = {".git", ".github", ".cursor", ".githooks", "scripts", "node_modules"}
+    if not SKILLS_DIR.is_dir():
+        return skills
 
-    for child in sorted(REPO_ROOT.iterdir()):
-        if not child.is_dir() or child.name in skip_dirs or child.name.startswith("."):
+    for child in sorted(SKILLS_DIR.iterdir()):
+        if not child.is_dir() or child.name.startswith("."):
             continue
         skill_md = child / "SKILL.md"
         if not skill_md.is_file():
@@ -106,13 +108,14 @@ def scan_local_skills() -> dict[str, SkillEntry]:
         readme = child / "README.md"
         name = meta.get("name", child.name)
         description = meta.get("description", "")
+        rel = f"skills/{child.name}"
 
         skills[slug] = SkillEntry(
             slug=slug,
             name=name,
             description=extract_summary(readme, description),
             source="local",
-            detail_path=f"{child.name}/README.md" if readme.is_file() else f"{child.name}/SKILL.md",
+            detail_path=f"{rel}/README.md" if readme.is_file() else f"{rel}/SKILL.md",
             category=meta.get("category", "cursor-skill"),
             tags=[t.strip() for t in meta.get("tags", "").split(",") if t.strip()],
         )
@@ -224,7 +227,7 @@ def category_label(cat: str) -> str:
 
 def source_label(entry: SkillEntry) -> str:
     if entry.source == "local":
-        return f"本地 `{entry.slug}/`"
+        return f"本地 `skills/{entry.slug}/`"
     return f"Issue #{entry.issue_number}"
 
 
@@ -236,7 +239,7 @@ def render_readme(skills: list[SkillEntry], issue_count: int) -> str:
         "> 本文件由 `scripts/generate-skills-readme.py` 自动生成，请勿手工编辑。",
         f"> 最后更新：{now}",
         "",
-        "收录 Cursor / Claude Agent Skill 与相关工具。技能可来自 **仓库子目录**（含 `SKILL.md`）或 **GitHub Issues**（标签 `skill-record`）。",
+        "收录 Cursor / Claude Agent Skill 与相关工具。技能可来自 **`skills/` 目录**（各子目录含 `SKILL.md`）或 **GitHub Issues**（标签 `skill-record`）。",
         "",
         "## 技能目录",
         "",
@@ -292,7 +295,7 @@ def render_readme(skills: list[SkillEntry], issue_count: int) -> str:
             "",
             "### 方式一：上传到仓库",
             "",
-            "1. 在仓库根目录创建 `{slug}/` 文件夹",
+            "1. 在 `skills/` 下创建 `{slug}/` 文件夹",
             "2. 放入 `SKILL.md`（必需）与 `README.md`（推荐，人类可读说明）",
             "3. 提交代码；`post-commit` 钩子或 CI 会自动更新本文件",
             "",
