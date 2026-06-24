@@ -24,7 +24,7 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 SKILLS_DIR = REPO_ROOT / "skills"
 OUTPUT = REPO_ROOT / "README.md"
 ISSUE_LABEL = "skill-record"
-ISSUE_TITLE_PREFIX = "[skill]"
+ISSUE_TITLE_PREFIXES = ("[skill]", "[repo]", "[idea]")
 INDEX_ISSUE_TITLE = "[skill-index]"
 
 
@@ -40,14 +40,21 @@ class SkillEntry:
     status: str = ""
     stars: str = ""
     repo_url: str = ""
+    recorded_at: str = ""
     issue_number: int | None = None
     detail_sections: dict[str, str] = field(default_factory=dict)
 
+
+# category → README 分区
+BUCKET_SKILL = "skill"
+BUCKET_REPO = "repo"
+BUCKET_IDEA = "idea"
+
 # 详情区展示的章节（不含安装、更新日志等）
 DETAIL_SECTION_MAP: dict[str, list[str]] = {
-    "简介": ["简介"],
-    "使用方法": ["用法", "使用方式", "使用方法"],
-    "使用效果": ["备注", "使用效果", "效果", "功能概览"],
+    "简介": ["简介", "想法"],
+    "使用方法": ["用法", "使用方式", "使用方法", "快速开始", "可能的下一步"],
+    "使用效果": ["备注", "使用效果", "效果", "功能概览", "功能亮点", "适用场景", "触发场景", "关联"],
 }
 
 SKIP_SECTION_RE = re.compile(
@@ -165,6 +172,15 @@ def gh_available() -> bool:
         return False
 
 
+def issue_title_display(title: str) -> str | None:
+    if title.startswith(INDEX_ISSUE_TITLE):
+        return None
+    for prefix in ISSUE_TITLE_PREFIXES:
+        if title.startswith(prefix):
+            return title[len(prefix) :].strip()
+    return None
+
+
 def fetch_issue_skills() -> dict[str, SkillEntry]:
     if not gh_available():
         return {}
@@ -195,28 +211,35 @@ def fetch_issue_skills() -> dict[str, SkillEntry]:
     skills: dict[str, SkillEntry] = {}
     for item in json.loads(raw):
         title = item.get("title", "")
-        if not title.startswith(ISSUE_TITLE_PREFIX) or title.startswith(INDEX_ISSUE_TITLE):
+        display = issue_title_display(title)
+        if display is None:
             continue
         if item.get("state") != "OPEN":
             continue
 
-        display = title[len(ISSUE_TITLE_PREFIX) :].strip()
         body = item.get("body") or ""
         meta = parse_record_frontmatter(body)
         slug = meta.get("slug") or slug_from_dir(display)
         number = item["number"]
 
         summary = meta.get("summary") or extract_summary(Path(), meta.get("description", ""))
+        category = meta.get("category", "")
+        if not category:
+            if title.startswith("[repo]"):
+                category = "github-repo"
+            elif title.startswith("[idea]"):
+                category = "idea"
         skills[slug] = SkillEntry(
             slug=slug,
             name=meta.get("title", display),
             description=summary,
             source="issue",
             detail_path=f"https://github.com/{_github_repo()}/issues/{number}",
-            category=meta.get("category", ""),
+            category=category,
             status=meta.get("status", ""),
             stars=meta.get("stars", ""),
             repo_url=meta.get("repo_url", ""),
+            recorded_at=meta.get("recorded_at", ""),
             issue_number=number,
             tags=[t.strip() for t in meta.get("tags", "").split(",") if t.strip()],
             detail_sections=extract_detail_sections(body, summary),
@@ -244,7 +267,37 @@ def merge_skills(local: dict[str, SkillEntry], issues: dict[str, SkillEntry]) ->
     merged = dict(issues)
     for slug, entry in local.items():
         merged[slug] = entry
-    return sorted(merged.values(), key=lambda s: s.name.lower())
+    return list(merged.values())
+
+
+def entry_bucket(entry: SkillEntry) -> str:
+    cat = entry.category
+    if cat == "github-repo":
+        return BUCKET_REPO
+    if cat == "idea":
+        return BUCKET_IDEA
+    return BUCKET_SKILL
+
+
+def sort_entries(entries: list[SkillEntry]) -> list[SkillEntry]:
+    return sorted(
+        entries,
+        key=lambda e: (e.recorded_at or "0000-00-00", e.name.lower()),
+        reverse=True,
+    )
+
+
+def split_by_bucket(entries: list[SkillEntry]) -> dict[str, list[SkillEntry]]:
+    buckets: dict[str, list[SkillEntry]] = {
+        BUCKET_SKILL: [],
+        BUCKET_REPO: [],
+        BUCKET_IDEA: [],
+    }
+    for entry in entries:
+        buckets[entry_bucket(entry)].append(entry)
+    for key in buckets:
+        buckets[key] = sort_entries(buckets[key])
+    return buckets
 
 
 def format_stars(raw: str) -> str:
@@ -266,6 +319,11 @@ def status_label(status: str) -> str:
         "installed": "已安装",
         "tried": "已试用",
         "deprecated": "已过时",
+        "spark": "灵感",
+        "exploring": "探索中",
+        "parked": "搁置",
+        "done": "已落实",
+        "dropped": "已放弃",
     }
     return mapping.get(status, status or "—")
 
@@ -276,6 +334,8 @@ def category_label(cat: str) -> str:
         "claude-skill": "Claude Skill",
         "mcp": "MCP",
         "agent-tool": "Agent 工具",
+        "github-repo": "GitHub 项目",
+        "idea": "想法",
         "other": "其他",
     }
     return mapping.get(cat, cat or "—")
@@ -383,55 +443,68 @@ def escape_html(text: str) -> str:
     )
 
 
-def render_table_html(skills: list[SkillEntry]) -> str:
+def render_table_html(entries: list[SkillEntry], *, show_stars: bool = True) -> str:
     """HTML 表格以控制列宽；名称列锚点至下方详情。"""
+    if show_stars:
+        colgroup = (
+            '<col width="18%"><col width="8%"><col width="12%">'
+            '<col width="8%"><col width="54%">'
+        )
+        header = "<th>名称</th><th>Stars</th><th>分类</th><th>状态</th><th>简介</th>"
+        colspan = 5
+    else:
+        colgroup = (
+            '<col width="20%"><col width="14%"><col width="10%">'
+            '<col width="56%">'
+        )
+        header = "<th>名称</th><th>分类</th><th>状态</th><th>简介</th>"
+        colspan = 4
+
     rows: list[str] = [
         "<table>",
         "<colgroup>",
-        '<col width="18%">',
-        '<col width="8%">',
-        '<col width="12%">',
-        '<col width="8%">',
-        '<col width="54%">',
+        colgroup,
         "</colgroup>",
         "<thead>",
-        "<tr>",
-        "<th>名称</th><th>Stars</th><th>分类</th><th>状态</th><th>简介</th>",
-        "</tr>",
+        f"<tr>{header}</tr>",
         "</thead>",
         "<tbody>",
     ]
-    if not skills:
-        rows.append(
-            '<tr><td colspan="5"><em>暂无记录</em></td></tr>'
-        )
+    if not entries:
+        rows.append(f'<tr><td colspan="{colspan}"><em>暂无记录</em></td></tr>')
     else:
-        for s in skills:
+        for s in entries:
             name = escape_html(s.name)
             summary = escape_html(truncate_cell(s.description))
-            rows.append(
-                "<tr>"
-                f'<td><a href="#{s.slug}">{name}</a></td>'
-                f"<td>{escape_html(format_stars(s.stars))}</td>"
-                f"<td>{escape_html(category_label(s.category))}</td>"
-                f"<td>{escape_html(status_label(s.status))}</td>"
-                f"<td>{summary}</td>"
-                "</tr>"
+            cells = [f'<td><a href="#{s.slug}">{name}</a></td>']
+            if show_stars:
+                cells.append(f"<td>{escape_html(format_stars(s.stars))}</td>")
+            cells.extend(
+                [
+                    f"<td>{escape_html(category_label(s.category))}</td>",
+                    f"<td>{escape_html(status_label(s.status))}</td>",
+                    f"<td>{summary}</td>",
+                ]
             )
+            rows.append("<tr>" + "".join(cells) + "</tr>")
     rows.extend(["</tbody>", "</table>"])
     return "\n".join(rows)
 
 
-def render_skill_details(skills: list[SkillEntry]) -> list[str]:
-    lines = ["## 技能详情", ""]
-    for i, s in enumerate(skills):
+def render_entry_details(entries: list[SkillEntry], section_title: str) -> list[str]:
+    if not entries:
+        return []
+    lines = [section_title, ""]
+    for i, s in enumerate(entries):
         lines.append(f'<a id="{s.slug}"></a>')
         lines.append("")
         lines.append(f"### {s.name}")
         lines.append("")
 
         meta: list[str] = [f"**分类** {category_label(s.category)}"]
-        if s.stars:
+        if s.recorded_at:
+            meta.append(f"**记录日期** {s.recorded_at}")
+        if s.stars and entry_bucket(s) != BUCKET_IDEA:
             meta.append(f"**Stars** {format_stars(s.stars)}")
         if s.status:
             meta.append(f"**状态** {status_label(s.status)}")
@@ -451,33 +524,62 @@ def render_skill_details(skills: list[SkillEntry]) -> list[str]:
             if content:
                 lines.extend([f"#### {key}", "", content, ""])
 
-        if i < len(skills) - 1:
+        if i < len(entries) - 1:
             lines.extend(["---", ""])
     return lines
 
 
-def render_readme(skills: list[SkillEntry], issue_count: int) -> str:
+def render_skill_details(skills: list[SkillEntry]) -> list[str]:
+    return render_entry_details(skills, "## Skill 详情")
+
+
+def render_readme(entries: list[SkillEntry], issue_count: int) -> str:
     now = datetime.now(ZoneInfo("Asia/Shanghai")).strftime("%Y-%m-%d %H:%M ")
+    buckets = split_by_bucket(entries)
+    skill_n = len(buckets[BUCKET_SKILL])
+    repo_n = len(buckets[BUCKET_REPO])
+    idea_n = len(buckets[BUCKET_IDEA])
+    total = skill_n + repo_n + idea_n
+
     lines = [
-        "# Skills Record — 技能记录库",
+        "# Skills Record — 目录库",
         "",
         f"> 最后更新：{now}",
         "",
-        "收录 Cursor / Claude Agent Skill 与相关工具。技能可来自 **`skills/` 目录**（各子目录含 `SKILL.md`）或 **GitHub Issues**（标签 `skill-record`）。",
+        (
+            "收录 **Agent Skill**、**GitHub 开源项目** 与 **偶然想法**。"
+            "条目来自仓库内 `skills/` 目录，或 GitHub Issues（标签 `skill-record`）。"
+        ),
         "",
-        "## 技能目录",
+        f"共 **{total}** 条：Skill {skill_n} · GitHub 项目 {repo_n} · 想法 {idea_n}",
         "",
-        render_table_html(skills),
+        "## Agent Skill",
+        "",
+        render_table_html(buckets[BUCKET_SKILL], show_stars=True),
+        "",
+        "## GitHub 项目",
+        "",
+        render_table_html(buckets[BUCKET_REPO], show_stars=True),
+        "",
+        "## 想法",
+        "",
+        render_table_html(buckets[BUCKET_IDEA], show_stars=False),
         "",
     ]
 
-    if skills:
-        lines.extend(render_skill_details(skills))
+    detail_parts = [
+        render_entry_details(buckets[BUCKET_SKILL], "## Skill 详情"),
+        render_entry_details(buckets[BUCKET_REPO], "## GitHub 项目详情"),
+        render_entry_details(buckets[BUCKET_IDEA], "## 想法详情"),
+    ]
+    if any(detail_parts):
+        lines.extend([p for part in detail_parts for p in (part + [""])])
 
     if issue_count == 0 and not gh_available():
         lines.extend(
             [
-                "> 提示：未检测到 `gh` 登录，仅扫描了本地目录。安装并登录 GitHub CLI 后可合并 Issues 中的技能。",
+                "> 提示：未检测到 `gh` 登录，仅扫描了本地 `skills/` 目录。"
+                "安装并登录 GitHub CLI 后可合并 Issues 中的记录。",
                 "",
             ]
         )
@@ -502,8 +604,8 @@ def main() -> int:
 
     local = scan_local_skills()
     issues = fetch_issue_skills()
-    skills = merge_skills(local, issues)
-    content = render_readme(skills, len(issues))
+    entries = merge_skills(local, issues)
+    content = render_readme(entries, len(issues))
 
     if args.check:
         if args.output.is_file() and args.output.read_text(encoding="utf-8") == content:
@@ -513,7 +615,12 @@ def main() -> int:
         return 1
 
     args.output.write_text(content, encoding="utf-8")
-    print(f"Wrote {args.output.relative_to(REPO_ROOT)} ({len(skills)} skills)")
+    print(
+        f"Wrote {args.output.relative_to(REPO_ROOT)} "
+        f"({len(entries)} entries: {len(split_by_bucket(entries)[BUCKET_SKILL])} skills, "
+        f"{len(split_by_bucket(entries)[BUCKET_REPO])} repos, "
+        f"{len(split_by_bucket(entries)[BUCKET_IDEA])} ideas)"
+    )
     return 0
 
 
