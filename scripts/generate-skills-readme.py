@@ -41,6 +41,8 @@ class SkillEntry:
     stars: str = ""
     repo_url: str = ""
     recorded_at: str = ""
+    updated_at: str = ""
+    seq: int = 0
     issue_number: int | None = None
     detail_sections: dict[str, str] = field(default_factory=dict)
 
@@ -229,6 +231,11 @@ def fetch_issue_skills() -> dict[str, SkillEntry]:
                 category = "github-repo"
             elif title.startswith("[idea]"):
                 category = "idea"
+        seq_raw = meta.get("seq", "")
+        try:
+            seq = int(seq_raw) if seq_raw else 0
+        except ValueError:
+            seq = 0
         skills[slug] = SkillEntry(
             slug=slug,
             name=meta.get("title", display),
@@ -240,6 +247,8 @@ def fetch_issue_skills() -> dict[str, SkillEntry]:
             stars=meta.get("stars", ""),
             repo_url=meta.get("repo_url", ""),
             recorded_at=meta.get("recorded_at", ""),
+            updated_at=meta.get("updated_at", ""),
+            seq=seq,
             issue_number=number,
             tags=[t.strip() for t in meta.get("tags", "").split(",") if t.strip()],
             detail_sections=extract_detail_sections(body, summary),
@@ -282,7 +291,11 @@ def entry_bucket(entry: SkillEntry) -> str:
 def sort_entries(entries: list[SkillEntry]) -> list[SkillEntry]:
     return sorted(
         entries,
-        key=lambda e: (e.recorded_at or "0000-00-00", e.name.lower()),
+        key=lambda e: (
+            e.seq if e.seq else 0,
+            e.recorded_at or "0000-00-00",
+            e.name.lower(),
+        ),
         reverse=True,
     )
 
@@ -444,21 +457,29 @@ def escape_html(text: str) -> str:
 
 
 def render_table_html(entries: list[SkillEntry], *, show_stars: bool = True) -> str:
-    """HTML 表格以控制列宽；名称列锚点至下方详情。"""
+    """HTML 表格：序号、加入/更新时间、名称等。"""
     if show_stars:
         colgroup = (
-            '<col width="18%"><col width="8%"><col width="12%">'
-            '<col width="8%"><col width="54%">'
+            '<col width="5%"><col width="9%"><col width="9%">'
+            '<col width="16%"><col width="7%"><col width="10%">'
+            '<col width="8%"><col width="36%">'
         )
-        header = "<th>名称</th><th>Stars</th><th>分类</th><th>状态</th><th>简介</th>"
-        colspan = 5
+        header = (
+            "<th>#</th><th>加入</th><th>更新</th><th>名称</th>"
+            "<th>Stars</th><th>分类</th><th>状态</th><th>简介</th>"
+        )
+        colspan = 8
     else:
         colgroup = (
-            '<col width="20%"><col width="14%"><col width="10%">'
-            '<col width="56%">'
+            '<col width="5%"><col width="10%"><col width="10%">'
+            '<col width="18%"><col width="12%"><col width="10%">'
+            '<col width="35%">'
         )
-        header = "<th>名称</th><th>分类</th><th>状态</th><th>简介</th>"
-        colspan = 4
+        header = (
+            "<th>#</th><th>加入</th><th>更新</th><th>名称</th>"
+            "<th>分类</th><th>状态</th><th>简介</th>"
+        )
+        colspan = 7
 
     rows: list[str] = [
         "<table>",
@@ -474,9 +495,17 @@ def render_table_html(entries: list[SkillEntry], *, show_stars: bool = True) -> 
         rows.append(f'<tr><td colspan="{colspan}"><em>暂无记录</em></td></tr>')
     else:
         for s in entries:
+            seq_cell = escape_html(str(s.seq)) if s.seq else "—"
+            joined = escape_html(s.recorded_at or "—")
+            updated = escape_html(s.updated_at or "—")
             name = escape_html(s.name)
-            summary = escape_html(truncate_cell(s.description))
-            cells = [f'<td><a href="#{s.slug}">{name}</a></td>']
+            summary = escape_html(truncate_cell(s.description, max_len=40))
+            cells = [
+                f"<td>{seq_cell}</td>",
+                f"<td>{joined}</td>",
+                f"<td>{updated}</td>",
+                f'<td><a href="#{s.slug}">{name}</a></td>',
+            ]
             if show_stars:
                 cells.append(f"<td>{escape_html(format_stars(s.stars))}</td>")
             cells.extend(
@@ -501,9 +530,14 @@ def render_entry_details(entries: list[SkillEntry], section_title: str) -> list[
         lines.append(f"### {s.name}")
         lines.append("")
 
-        meta: list[str] = [f"**分类** {category_label(s.category)}"]
+        meta: list[str] = []
+        if s.seq:
+            meta.append(f"**#{s.seq}**")
+        meta.append(f"**分类** {category_label(s.category)}")
         if s.recorded_at:
-            meta.append(f"**记录日期** {s.recorded_at}")
+            meta.append(f"**加入** {s.recorded_at}")
+        if s.updated_at and s.updated_at != s.recorded_at:
+            meta.append(f"**更新** {s.updated_at}")
         if s.stars and entry_bucket(s) != BUCKET_IDEA:
             meta.append(f"**Stars** {format_stars(s.stars)}")
         if s.status:
