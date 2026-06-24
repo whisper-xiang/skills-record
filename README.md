@@ -33,7 +33,7 @@
 <tr><th>#</th><th>加入</th><th>更新</th><th>名称</th><th>Stars</th><th>分类</th><th>状态</th><th>简介</th></tr>
 </thead>
 <tbody>
-<tr><td>5</td><td>2026-06-24</td><td>2026-06-24</td><td><a href="#wiltodelta-remove-ai-watermarks">remove-ai-watermarks</a></td><td>3.5k</td><td>GitHub 项目</td><td>收藏</td><td>CLI/Python 库：去除 AI 生成图片的可见/不可见水印（Gemini…</td></tr>
+<tr><td>—</td><td>2026-06-24</td><td>—</td><td><a href="#wiltodelta-remove-ai-watermarks">remove-ai-watermarks</a></td><td>3.5k</td><td>GitHub 项目</td><td>—</td><td>CLI/Python 库：去除 AI 生成图片的可见/不可见水印（Gemini…</td></tr>
 <tr><td>—</td><td>2026-06-23</td><td>—</td><td><a href="#ranfeng-clipsketch-ai">ClipSketch AI</a></td><td>1.8k</td><td>GitHub 项目</td><td>—</td><td>AI 视频创作工作台：解析 B 站/小红书链接，帧级标记精彩瞬间，Gemini…</td></tr>
 </tbody>
 </table>
@@ -266,7 +266,7 @@ Nature style 润色这段学术文本。
 
 ### remove-ai-watermarks
 
-**#5** · **分类** GitHub 项目 · **加入** 2026-06-24 · **Stars** 3.5k · **状态** 收藏 · **标签** AI, 水印, 图像处理, CLI, Python, Gemini, SynthID, C2PA, 元数据 · **仓库** [https://github.com/wiltodelta/remove-ai-watermarks](https://github.com/wiltodelta/remove-ai-watermarks) · **Issue** [#8](https://github.com/whisper-xiang/skills-record/issues/8)
+**分类** GitHub 项目 · **加入** 2026-06-24 · **Stars** 3.5k · **标签** AI, 水印, 图像处理, CLI, Python, Gemini, SynthID, C2PA, 元数据 · **仓库** [https://github.com/wiltodelta/remove-ai-watermarks](https://github.com/wiltodelta/remove-ai-watermarks) · **Issue** [#8](https://github.com/whisper-xiang/skills-record/issues/8)
 
 #### 简介
 
