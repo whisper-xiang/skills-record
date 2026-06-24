@@ -1,6 +1,6 @@
 # Skills Record — 目录库
 
-> 最后更新：2026-06-24 10:17 
+> 最后更新：2026-06-24 10:28 
 
 收录 **Agent Skill**、**GitHub 开源项目** 与 **偶然想法**。条目来自仓库内 `skills/` 目录，或 GitHub Issues（标签 `skill-record`）。
 
