@@ -24,20 +24,22 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 SKILLS_DIR = REPO_ROOT / "skills"
 OUTPUT = REPO_ROOT / "README.md"
 ISSUE_LABEL = "skill-record"
-ISSUE_TITLE_PREFIXES = ("[skill]", "[repo]", "[idea]")
+ISSUE_TITLE_PREFIXES = ("[skill]", "[repo]", "[idea]", "[tool]")
 INDEX_ISSUE_TITLE = "[skill-index]"
 
 BUCKET_SKILL = "skill"
 BUCKET_REPO = "repo"
 BUCKET_IDEA = "idea"
+BUCKET_TOOL = "tool"
 
 SECTION_ZH = {
     BUCKET_SKILL: "一、Agent Skill",
     BUCKET_REPO: "二、GitHub 项目",
     BUCKET_IDEA: "三、想法",
+    BUCKET_TOOL: "四、工具网站",
 }
 
-SECTION_NUM = {BUCKET_SKILL: 1, BUCKET_REPO: 2, BUCKET_IDEA: 3}
+SECTION_NUM = {BUCKET_SKILL: 1, BUCKET_REPO: 2, BUCKET_IDEA: 3, BUCKET_TOOL: 4}
 
 DETAIL_SECTION_MAP: dict[str, list[str]] = {
     "简介": ["简介", "想法"],
@@ -65,6 +67,7 @@ class SkillEntry:
     status: str = ""
     stars: str = ""
     repo_url: str = ""
+    site_url: str = ""
     recorded_at: str = ""
     issue_number: int | None = None
     detail_sections: dict[str, str] = field(default_factory=dict)
@@ -208,6 +211,8 @@ def fetch_issue_skills() -> dict[str, SkillEntry]:
                 category = "github-repo"
             elif title.startswith("[idea]"):
                 category = "idea"
+            elif title.startswith("[tool]"):
+                category = "tool-site"
         summary = meta.get("summary") or extract_summary(Path(), meta.get("description", ""))
         skills[slug] = SkillEntry(
             slug=slug,
@@ -219,6 +224,7 @@ def fetch_issue_skills() -> dict[str, SkillEntry]:
             status=meta.get("status", ""),
             stars=meta.get("stars", ""),
             repo_url=meta.get("repo_url", ""),
+            site_url=meta.get("site_url", ""),
             recorded_at=meta.get("recorded_at", ""),
             issue_number=number,
             tags=[t.strip() for t in meta.get("tags", "").split(",") if t.strip()],
@@ -253,6 +259,8 @@ def entry_bucket(entry: SkillEntry) -> str:
         return BUCKET_REPO
     if entry.category == "idea":
         return BUCKET_IDEA
+    if entry.category == "tool-site":
+        return BUCKET_TOOL
     return BUCKET_SKILL
 
 
@@ -266,7 +274,7 @@ def sort_entries(entries: list[SkillEntry]) -> list[SkillEntry]:
 
 def split_by_bucket(entries: list[SkillEntry]) -> dict[str, list[SkillEntry]]:
     buckets: dict[str, list[SkillEntry]] = {
-        BUCKET_SKILL: [], BUCKET_REPO: [], BUCKET_IDEA: [],
+        BUCKET_SKILL: [], BUCKET_REPO: [], BUCKET_IDEA: [], BUCKET_TOOL: [],
     }
     for entry in entries:
         buckets[entry_bucket(entry)].append(entry)
@@ -300,6 +308,7 @@ def category_label(cat: str) -> str:
         "agent-tool": "Agent 工具",
         "github-repo": "GitHub 项目",
         "idea": "想法",
+        "tool-site": "工具网站",
         "other": "其他",
     }
     return mapping.get(cat, cat or "—")
@@ -421,12 +430,19 @@ def render_index_table(entries: list[SkillEntry], bucket: str) -> str:
             ])
         elif bucket == BUCKET_REPO:
             rows.append([str(i), anchor, format_stars(e.stars), summary, joined])
+        elif bucket == BUCKET_TOOL:
+            site = e.site_url or "—"
+            if site.startswith("http"):
+                site = f"[{site}]({site})"
+            rows.append([str(i), anchor, site, summary, joined])
         else:
             rows.append([str(i), anchor, summary, joined])
     if bucket == BUCKET_SKILL:
         headers = ["序号", "名称", "分类", "Stars", "简介", "状态", "加入"]
     elif bucket == BUCKET_REPO:
         headers = ["序号", "名称", "Stars", "简介", "加入"]
+    elif bucket == BUCKET_TOOL:
+        headers = ["序号", "名称", "网址", "简介", "加入"]
     else:
         headers = ["序号", "名称", "简介", "加入"]
     return render_md_table(headers, rows)
@@ -436,12 +452,14 @@ def render_meta_table(entry: SkillEntry, bucket: str) -> str:
     rows: list[list[str]] = []
     rows.append(["分类", category_label(entry.category)])
     rows.append(["加入", entry.recorded_at or "—"])
-    if bucket != BUCKET_IDEA:
+    if bucket in (BUCKET_SKILL, BUCKET_REPO):
         rows.append(["Stars", format_stars(entry.stars)])
     if bucket == BUCKET_SKILL:
         rows.append(["状态", skill_status_label(entry.status)])
     if entry.tags:
         rows.append(["标签", ", ".join(entry.tags)])
+    if entry.site_url:
+        rows.append(["网站", f"[{entry.site_url}]({entry.site_url})"])
     if entry.repo_url:
         rows.append(["仓库", f"[{entry.repo_url}]({entry.repo_url})"])
     if entry.source == "local":
@@ -486,14 +504,15 @@ def render_readme(entries: list[SkillEntry], issue_count: int) -> str:
         "",
         f"> 最后更新：{now}",
         "",
-        "收录 **Agent Skill**、**GitHub 开源项目** 与 **偶然想法**。",
+        "收录 **Agent Skill**、**GitHub 开源项目**、**偶然想法** 与 **在线工具网站**。",
         "序号仅为各模块内顺序编号，非 Issue 编号。Skill 状态仅 **收藏 / 已安装**。",
         "",
         f"共 **{total}** 条：Skill {len(buckets[BUCKET_SKILL])} · "
-        f"GitHub 项目 {len(buckets[BUCKET_REPO])} · 想法 {len(buckets[BUCKET_IDEA])}",
+        f"GitHub 项目 {len(buckets[BUCKET_REPO])} · 想法 {len(buckets[BUCKET_IDEA])} · "
+        f"工具网站 {len(buckets[BUCKET_TOOL])}",
         "",
     ]
-    for bucket in (BUCKET_SKILL, BUCKET_REPO, BUCKET_IDEA):
+    for bucket in (BUCKET_SKILL, BUCKET_REPO, BUCKET_IDEA, BUCKET_TOOL):
         lines.extend(render_bucket_section(bucket, buckets[bucket]))
         lines.append("")
     if issue_count == 0 and not gh_available():
@@ -525,7 +544,8 @@ def main() -> int:
     print(
         f"Wrote {args.output.relative_to(REPO_ROOT)} "
         f"({len(entries)} entries: {len(b[BUCKET_SKILL])} skills, "
-        f"{len(b[BUCKET_REPO])} repos, {len(b[BUCKET_IDEA])} ideas)"
+        f"{len(b[BUCKET_REPO])} repos, {len(b[BUCKET_IDEA])} ideas, "
+        f"{len(b[BUCKET_TOOL])} tools)"
     )
     return 0
 
